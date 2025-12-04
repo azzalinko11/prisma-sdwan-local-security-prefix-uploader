@@ -2,7 +2,7 @@
 """
 Script to Auto Allocate NGFW Local Security Prefixes & Bindings
 Author: Aaron Ratcliffe @ PANW
-Version: 5..0 (Fix: More the one lcoal prefix per site localized)
+Version: 6.0.0 (Append Fix's)
 """
 import argparse
 import sys
@@ -20,7 +20,7 @@ sdk.interactive.login_secret(client_id=prismasase_settings.client_id,
                              tsg_id=prismasase_settings.scope)
 
 ##############################################################################
-# Get Dics & Helpers
+# Helpers
 ##############################################################################
 def get_site_map():
     print("Loading Site map...")
@@ -37,11 +37,9 @@ def get_ngfw_prefix_containers():
     print("Loading NGFW Security Local Prefix Containers...")
     prefix_map = {}
     
-    # Try native SDK get method
     if hasattr(sdk.get, "ngfwsecuritypolicylocalprefixes"):
         resp = sdk.get.ngfwsecuritypolicylocalprefixes()
     else:
-        # Fallback to older SDK naming or REST
         if hasattr(sdk.get, "ngfw_security_policy_local_prefixes"):
             resp = sdk.get.ngfw_security_policy_local_prefixes()
         else:
@@ -61,7 +59,7 @@ def get_ngfw_prefix_containers():
 def process_bindings(csv_file_path):
     print(f"\nProcessing Bindings from CSV: {csv_file_path}\n" + "="*50)
     
-    # Load Maps
+    # 1. Load Maps
     site_id_map = get_site_map()
     container_map = get_ngfw_prefix_containers()
 
@@ -102,7 +100,6 @@ def process_bindings(csv_file_path):
         if p_name not in container_map:
             print(f"  > Creating new Container: '{p_name}'...")
             payload = {"name": p_name, "description": "Created via SDK"}
-            # Helper to create container
             if hasattr(sdk.post, "ngfwsecuritypolicylocalprefixes"):
                 resp = sdk.post.ngfwsecuritypolicylocalprefixes(data=payload)
             else:
@@ -126,7 +123,6 @@ def process_bindings(csv_file_path):
 
         current_bindings_map = {} 
         try:
-            # SDK Call to get existing bindings
             resp = sdk.get.site_ngfwsecuritypolicylocalprefixes(site_id=site_id)
             if resp.ok:
                 for b in resp.json().get('items', []):
@@ -143,28 +139,41 @@ def process_bindings(csv_file_path):
             existing_binding = current_bindings_map.get(container_id)
             
             if existing_binding:
-                # === UPDATE (PUT) ===
+                # === UPDATE (PUT) - APPEND MODE ===
                 binding_id = existing_binding['id']
                 current_ips = set(existing_binding.get('ipv4_prefixes', []))
+                
+                # Merge existing IPs with new IPs from CSV
                 merged_ips = list(current_ips.union(new_cidrs_set))
                 
-                # Check for changes
+                # Check if we actually need to update
                 if len(merged_ips) > len(current_ips):
-                    print(f"  > Appending {len(new_cidrs_set)} IPs to '{header}'...")
+                    print(f"  > Appending {len(new_cidrs_set)} IPs to '{header}' (Total: {len(merged_ips)})...")
 
-                    # Sanitize Tags (Null -> [])
+                    # 1. Sanitize Tags (Must be [])
                     existing_tags = existing_binding.get('tags')
                     if existing_tags is None:
                         existing_tags = []
                     
-                    # --- THE FIX: Match User's Working Payload Exact Structure ---
-                    # No "id", No "_etag". Just the data.
+                    # 2. Get Metadata (Must exist for PUT)
+                    etag = existing_binding.get('_etag')
+                    schema = existing_binding.get('_schema')
+
+                    # --- THE FIX: EXACT PAYLOAD MATCH ---
+                    # We include every field from your working example
                     payload = {
+                        "id": binding_id,
                         "prefix_id": container_id,
                         "ipv4_prefixes": merged_ips,
                         "ipv6_prefixes": [],
                         "tags": existing_tags
                     }
+                    
+                    # Add _etag and _schema if they exist in the original object
+                    if etag is not None:
+                        payload["_etag"] = etag
+                    if schema is not None:
+                        payload["_schema"] = schema
                     
                     try:
                         # SDK PUT: (site_id, binding_id, data)
@@ -182,7 +191,6 @@ def process_bindings(csv_file_path):
             else:
                 # === CREATE (POST) ===
                 print(f"  > Creating new binding for '{header}'...")
-                # POST Payload
                 payload = {
                     "prefix_id": container_id,
                     "ipv4_prefixes": list(new_cidrs_set),
