@@ -11,6 +11,6 @@ Update the sec_prefix.csv header row with your local prefix names then set per s
 set your creds in the prismasase_settings.py.example and change the extension by removing the .example
 <br>
 <br>
-To run: python3 local_sec_pref_csv_uploader.py
+<strong>To run: </strong> python3 local_sec_pref_csv_uploader.py
 <br>
-Use at own risk :)
+<strong>Use at own risk :)</strong>
