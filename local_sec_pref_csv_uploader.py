@@ -139,7 +139,6 @@ def process_bindings(csv_file_path):
             existing_binding = current_bindings_map.get(container_id)
             
             if existing_binding:
-                # === UPDATE (PUT) - APPEND MODE ===
                 binding_id = existing_binding['id']
                 current_ips = set(existing_binding.get('ipv4_prefixes', []))
                 
@@ -158,9 +157,7 @@ def process_bindings(csv_file_path):
                     # 2. Get Metadata (Must exist for PUT)
                     etag = existing_binding.get('_etag')
                     schema = existing_binding.get('_schema')
-
-                    # --- THE FIX: EXACT PAYLOAD MATCH ---
-                    # We include every field from your working example
+                    
                     payload = {
                         "id": binding_id,
                         "prefix_id": container_id,
